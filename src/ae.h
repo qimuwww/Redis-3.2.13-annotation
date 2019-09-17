@@ -38,25 +38,27 @@
 #define AE_OK 0
 #define AE_ERR -1
 
-#define AE_NONE 0       /* No events registered. */
-#define AE_READABLE 1   /* Fire when descriptor is readable. */
-#define AE_WRITABLE 2   /* Fire when descriptor is writable. */
-#define AE_BARRIER 4    /* With WRITABLE, never fire the event if the
-                           READABLE event already fired in the same event
-                           loop iteration. Useful when you want to persist
-                           things to disk before sending replies, and want
-                           to do that in a group fashion. */
+#define AE_NONE 0 /* No events registered. */
+// 读就绪
+#define AE_READABLE 1 /* Fire when descriptor is readable. */
+// 写就绪
+#define AE_WRITABLE 2 /* Fire when descriptor is writable. */
+#define AE_BARRIER 4  /* With WRITABLE, never fire the event if the      \
+                         READABLE event already fired in the same event  \
+                         loop iteration. Useful when you want to persist \
+                         things to disk before sending replies, and want \
+                         to do that in a group fashion. */
 
 #define AE_FILE_EVENTS 1
 #define AE_TIME_EVENTS 2
-#define AE_ALL_EVENTS (AE_FILE_EVENTS|AE_TIME_EVENTS)
+#define AE_ALL_EVENTS (AE_FILE_EVENTS | AE_TIME_EVENTS)
 #define AE_DONT_WAIT 4
 
 #define AE_NOMORE -1
 #define AE_DELETED_EVENT_ID -1
 
 /* Macros */
-#define AE_NOTUSED(V) ((void) V)
+#define AE_NOTUSED(V) ((void)V)
 
 struct aeEventLoop;
 
@@ -67,7 +69,8 @@ typedef void aeEventFinalizerProc(struct aeEventLoop *eventLoop, void *clientDat
 typedef void aeBeforeSleepProc(struct aeEventLoop *eventLoop);
 
 /* File event structure */
-typedef struct aeFileEvent {
+typedef struct aeFileEvent
+{
     int mask; /* one of AE_(READABLE|WRITABLE|BARRIER) */
     aeFileProc *rfileProc;
     aeFileProc *wfileProc;
@@ -75,10 +78,11 @@ typedef struct aeFileEvent {
 } aeFileEvent;
 
 /* Time event structure */
-typedef struct aeTimeEvent {
-    long long id; /* time event identifier. */
+typedef struct aeTimeEvent
+{
+    long long id;  /* time event identifier. */
     long when_sec; /* seconds */
-    long when_ms; /* milliseconds */
+    long when_ms;  /* milliseconds */
     aeTimeProc *timeProc;
     aeEventFinalizerProc *finalizerProc;
     void *clientData;
@@ -86,18 +90,23 @@ typedef struct aeTimeEvent {
 } aeTimeEvent;
 
 /* A fired event */
-typedef struct aeFiredEvent {
+// 就绪事件结构体
+typedef struct aeFiredEvent
+{
     int fd;
     int mask;
 } aeFiredEvent;
 
 /* State of an event based program */
-typedef struct aeEventLoop {
+typedef struct aeEventLoop
+{
     int maxfd;   /* highest file descriptor currently registered */
     int setsize; /* max number of file descriptors tracked */
     long long timeEventNextId;
-    time_t lastTime;     /* Used to detect system clock skew */
+    time_t lastTime; /* Used to detect system clock skew */
+    // events以数组形式存在  每个连接的文件描述符作为下标
     aeFileEvent *events; /* Registered events */
+    // fired以数组形式存在 存放就绪事件，就绪事件包括就绪的文件描述符和就绪时间类型
     aeFiredEvent *fired; /* Fired events */
     aeTimeEvent *timeEventHead;
     int stop;
@@ -110,12 +119,12 @@ aeEventLoop *aeCreateEventLoop(int setsize);
 void aeDeleteEventLoop(aeEventLoop *eventLoop);
 void aeStop(aeEventLoop *eventLoop);
 int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
-        aeFileProc *proc, void *clientData);
+                      aeFileProc *proc, void *clientData);
 void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask);
 int aeGetFileEvents(aeEventLoop *eventLoop, int fd);
 long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
-        aeTimeProc *proc, void *clientData,
-        aeEventFinalizerProc *finalizerProc);
+                            aeTimeProc *proc, void *clientData,
+                            aeEventFinalizerProc *finalizerProc);
 int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id);
 int aeProcessEvents(aeEventLoop *eventLoop, int flags);
 int aeWait(int fd, int mask, long long milliseconds);
