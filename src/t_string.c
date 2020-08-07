@@ -85,6 +85,7 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
     }
     setKey(c->db,key,val);
     server.dirty++;
+    // 设置过期时间  mstime获取当前时间(毫秒)+客户端传入的过期时间(毫秒)
     if (expire) setExpire(c->db,key,mstime()+milliseconds);
     notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
     if (expire) notifyKeyspaceEvent(NOTIFY_GENERIC,

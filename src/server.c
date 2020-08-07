@@ -831,6 +831,8 @@ void activeExpireCycle(int type) {
             int ttl_samples;
 
             /* If there is nothing to expire try next DB ASAP. */
+            // 带有过期时间的key都存放在redisDB.expires中,如果expires的长度为0,说明
+            // 该数据库中没有带过期时间的key,则直接跳过该数据库
             if ((num = dictSize(db->expires)) == 0) {
                 db->avg_ttl = 0;
                 break;
@@ -1098,7 +1100,12 @@ void updateCachedTime(void) {
  * so in order to throttle execution of things we want to do less frequently
  * a macro is used: run_with_period(milliseconds) { .... }
  */
-
+/*
+*   第一次注册时的超时时间为1ms,之后再重置时间事件的超时时间为该函数的返回值,与server.hz
+*   参数有关,为1000/server.hz ms.
+*   该时间事件内包含以下处理:
+*   定期删除过期键 databasesCron函数中调用activeExpireCycle函数
+* */
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
     UNUSED(eventLoop);
@@ -1967,6 +1974,7 @@ void initServer(void) {
 
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
+    // 注册时间事件 1ms后触发serverCron
     if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create the serverCron time event.");
         exit(1);
@@ -2680,6 +2688,8 @@ int time_independent_strcmp(char *a, char *b) {
     return diff; /* If zero strings are the same. */
 }
 
+// 简单密码校验 redis.conf:# requirepass foobared
+// 通过则client的authenticated置1
 void authCommand(client *c) {
     if (!server.requirepass) {
         addReplyError(c,"Client sent AUTH, but no password is set");
