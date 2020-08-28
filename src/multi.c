@@ -72,7 +72,9 @@ void queueMultiCommand(client *c) {
 void discardTransaction(client *c) {
     freeClientMultiState(c);
     initClientMultiState(c);
+    // 清楚事务相关的标志位
     c->flags &= ~(CLIENT_MULTI|CLIENT_DIRTY_CAS|CLIENT_DIRTY_EXEC);
+    // unwatch客户端事务开始前watch的所有key
     unwatchAllKeys(c);
 }
 
@@ -84,15 +86,19 @@ void flagTransaction(client *c) {
 }
 
 void multiCommand(client *c) {
+    // 事物不能嵌套
     if (c->flags & CLIENT_MULTI) {
         addReplyError(c,"MULTI calls can not be nested");
         return;
     }
+    // 设置客户端标志位为CLIENT_MULTI,表示客户端开启事务
     c->flags |= CLIENT_MULTI;
     addReply(c,shared.ok);
 }
 
+// 放弃事务
 void discardCommand(client *c) {
+    // 非事务模式下不能放弃事务
     if (!(c->flags & CLIENT_MULTI)) {
         addReplyError(c,"DISCARD without MULTI");
         return;

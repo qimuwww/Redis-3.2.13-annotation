@@ -856,6 +856,7 @@ void setExpire(redisDb *db, robj *key, long long when) {
 
 /* Return the expire time of the specified key, or -1 if no expire
  * is associated with this key (i.e. the key is non volatile) */
+// 获取指定key的过期时间,如果key不在过期列表中,返回-1,否则返回过期时间
 long long getExpire(redisDb *db, robj *key) {
     dictEntry *de;
 
@@ -877,6 +878,8 @@ long long getExpire(redisDb *db, robj *key) {
  * AOF and the master->slave link guarantee operation ordering, everything
  * will be consistent even if we allow write operations against expiring
  * keys. */
+// 将过期的key传播到slaves和aof文件
+// master节点上的key过期后,master会发送一个del命令到aof文件和所有的slaves
 void propagateExpire(redisDb *db, robj *key) {
     robj *argv[2];
 
@@ -893,13 +896,16 @@ void propagateExpire(redisDb *db, robj *key) {
     decrRefCount(argv[1]);
 }
 
+// 判断一个key是否过期需要删除
 int expireIfNeeded(redisDb *db, robj *key) {
     mstime_t when = getExpire(db,key);
     mstime_t now;
 
+    // 小于0,说明该key不在过期列表中
     if (when < 0) return 0; /* No expire for this key */
 
     /* Don't expire anything while loading. It will be done later. */
+    // server正在载入持久化文件,不进行过期检查
     if (server.loading) return 0;
 
     /* If we are in the context of a Lua script, we claim that time is
@@ -1015,6 +1021,7 @@ void ttlGenericCommand(client *c, int output_ms) {
     expire = getExpire(c->db,c->argv[1]);
     if (expire != -1) {
         ttl = expire-mstime();
+        // key已过期,还没被删除
         if (ttl < 0) ttl = 0;
     }
     if (ttl == -1) {

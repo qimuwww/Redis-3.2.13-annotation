@@ -229,13 +229,17 @@ int pubsubPublishMessage(robj *channel, robj *message) {
     listIter li;
 
     /* Send to clients listening for that channel */
+    // 在server已发布订阅的频道中查找本次要发布消息的频道是否存在
+    // 如果不存在则说明当前没有客户端在订阅该频道,则不做任何处理
     de = dictFind(server.pubsub_channels,channel);
     if (de) {
+        // 有客户端在订阅本频道,获取客户端列表
         list *list = dictGetVal(de);
         listNode *ln;
         listIter li;
-
+        // 创建列表迭代器
         listRewind(list,&li);
+        // 遍历列表,给列表中的客户端发送消息
         while ((ln = listNext(&li)) != NULL) {
             client *c = ln->value;
 
@@ -247,12 +251,13 @@ int pubsubPublishMessage(robj *channel, robj *message) {
         }
     }
     /* Send to clients listening to matching channels */
+    // 从server中的订阅模式列表中查找是否有匹配的模式
     if (listLength(server.pubsub_patterns)) {
         listRewind(server.pubsub_patterns,&li);
         channel = getDecodedObject(channel);
         while ((ln = listNext(&li)) != NULL) {
             pubsubPattern *pat = ln->value;
-
+            // 遍历列表,如果有匹配到则给匹配到的客户端发送消息
             if (stringmatchlen((char*)pat->pattern->ptr,
                                 sdslen(pat->pattern->ptr),
                                 (char*)channel->ptr,
@@ -267,6 +272,7 @@ int pubsubPublishMessage(robj *channel, robj *message) {
         }
         decrRefCount(channel);
     }
+    // 返回本次发布的消息有多少客户端接收
     return receivers;
 }
 
@@ -315,7 +321,9 @@ void punsubscribeCommand(client *c) {
 }
 
 void publishCommand(client *c) {
+    // 发布消息
     int receivers = pubsubPublishMessage(c->argv[1],c->argv[2]);
+    // 如果server当前运行在集群模式下,则需要将此次发布的消息广播到集群的其他节点
     if (server.cluster_enabled)
         clusterPropagatePublish(c->argv[1],c->argv[2]);
     else
@@ -349,15 +357,18 @@ void pubsubCommand(client *c) {
         }
         dictReleaseIterator(di);
         setDeferredMultiBulkLength(c,replylen,mblen);
+        // 查询channel订阅的数量
     } else if (!strcasecmp(c->argv[1]->ptr,"numsub") && c->argc >= 2) {
         /* PUBSUB NUMSUB [Channel_1 ... Channel_N] */
         int j;
 
         addReplyMultiBulkLen(c,(c->argc-2)*2);
         for (j = 2; j < c->argc; j++) {
+            // 根据channel名直接去server当前的pubsub_channels寻找
             list *l = dictFetchValue(server.pubsub_channels,c->argv[j]);
 
             addReplyBulk(c,c->argv[j]);
+            // 找到则返回订阅的客户端列表的长度,没找到说明没有客户端订阅
             addReplyLongLong(c,l ? listLength(l) : 0);
         }
     } else if (!strcasecmp(c->argv[1]->ptr,"numpat") && c->argc == 2) {

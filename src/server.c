@@ -837,12 +837,15 @@ void activeExpireCycle(int type) {
                 db->avg_ttl = 0;
                 break;
             }
+            // 获取过期键dict的大小
             slots = dictSlots(db->expires);
             now = mstime();
 
             /* When there are less than 1% filled slots getting random
              * keys is expensive, so stop here waiting for better times...
              * The dictionary will be resized asap. */
+            // 如果当前dict的size大于默认size,且使用率小于1%,随机获取key的代价是昂贵的
+            // 在这种情况下跳过对该数据库过期key的删除工作,等待该库执行resize操作
             if (num && slots > DICT_HT_INITIAL_SIZE &&
                 (num*100/slots < 1)) break;
 
@@ -854,7 +857,7 @@ void activeExpireCycle(int type) {
 
             if (num > ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP)
                 num = ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP;
-
+            // 每次随机扫描最多只扫描20个key
             while (num--) {
                 dictEntry *de;
                 long long ttl;
@@ -884,6 +887,9 @@ void activeExpireCycle(int type) {
              * expire. So after a given amount of milliseconds return to the
              * caller waiting for the other active expire cycle. */
             iteration++;
+            // 在循环扫描完16个库之前的每次扫描都需要计算以下扫描所花费的时间,
+            // 如果扫描时间超时则退出扫描,并记录当前扫描的位置,下次定时任务触发时
+            // 继续
             if ((iteration & 0xf) == 0) { /* check once every 16 iterations. */
                 long long elapsed = ustime()-start;
 
@@ -893,6 +899,10 @@ void activeExpireCycle(int type) {
             if (timelimit_exit) return;
             /* We don't repeat the cycle if there are less than 25% of keys
              * found expired in the current DB. */
+            // 如果本次随机扫描的20个key中过期key的比例小于25%,则本次定时任务中不再对该库
+            // 的过期键进行清理,原因:该库中已过期键的比例较小,再次重复该操作代价会比较昂贵
+
+            // 退出条件 : 扫描超时,过期键比例小,超时时间内全部扫描完
         } while (expired > ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP/4);
     }
 }
@@ -1031,6 +1041,9 @@ void clientsCron(void) {
 void databasesCron(void) {
     /* Expire keys by random sampling. Not required for slaves
      * as master will synthesize DELs for us. */
+    // 定期删除过期key,删除操作会定期由server注册的定时事件触发
+    // 如果当前运行模式为salve节点,则不需要触发该操作,因为master节点会同步删除操作给
+    // 从节点
     if (server.active_expire_enabled && server.masterhost == NULL)
         activeExpireCycle(ACTIVE_EXPIRE_CYCLE_SLOW);
 

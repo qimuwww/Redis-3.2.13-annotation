@@ -1212,7 +1212,7 @@ char *sendSynchronousCommand(int flags, int fd, ...) {
     /* Read the reply from the server. */
     if (flags & SYNC_CMD_READ) {
         char buf[256];
-
+    // 同步阻塞读取响应,直到超时
         if (syncReadLine(fd,buf,sizeof(buf),server.repl_syncio_timeout*1000)
             == -1)
         {
@@ -1409,11 +1409,16 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* Send a PING to check the master is able to reply without errors. */
+    // 1.
+    // slaver与master建立连接后会先将repl state标志位置为REPL_STATE_CONNECTING
+    // slaver和master之间首先需要通过ping pong来确定双方的连接是否正常
     if (server.repl_state == REPL_STATE_CONNECTING) {
         serverLog(LL_NOTICE,"Non blocking connect for SYNC fired the event.");
         /* Delete the writable event so that the readable event remains
          * registered and we can wait for the PONG reply. */
         aeDeleteFileEvent(server.el,fd,AE_WRITABLE);
+        // 2. 随后需要将repl state标志位置为REPL_STATE_RECEIVE_PONG
+        // slaver将同步阻塞等待pong回复
         server.repl_state = REPL_STATE_RECEIVE_PONG;
         /* Send the PING, don't check for errors at all, we have the timeout
          * that will take care about this. */
@@ -1443,11 +1448,18 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
                 "Master replied to PING, replication can continue...");
         }
         sdsfree(err);
+        // 3.收到master回复的PONG,说明连接正常,可以进行读写操作
+        // 接下来slaver与master进行auth认证(如果认证开启)
+        // 包括主从全部配置了auth 主从只有一个配置了 自从都没有配置 
+        // 不同结果返回不同错误
         server.repl_state = REPL_STATE_SEND_AUTH;
     }
 
     /* AUTH with the master if required. */
     if (server.repl_state == REPL_STATE_SEND_AUTH) {
+        // 4. 如果auth开启,则发送auth password,然后将repl state标志位置为REPL_STATE_RECEIVE_AUTH
+        // 等待auth响应
+        // 如果没有开启auth,则将repl state标志位置为REPL_STATE_SEND_PORT
         if (server.masterauth) {
             err = sendSynchronousCommand(SYNC_CMD_WRITE,fd,"AUTH",server.masterauth,NULL);
             if (err) goto write_error;
@@ -1467,6 +1479,8 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
             goto error;
         }
         sdsfree(err);
+        // 校验通过,将repl state标志位置为REPL_STATE_SEND_PORT
+        // 发送slaver的同步端口
         server.repl_state = REPL_STATE_SEND_PORT;
     }
 
@@ -1475,6 +1489,8 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (server.repl_state == REPL_STATE_SEND_PORT) {
         sds port = sdsfromlonglong(server.slave_announce_port ?
             server.slave_announce_port : server.port);
+        // REPLCONF listening-port port
+        // 发送之后slaver和master同步数据使用的端口
         err = sendSynchronousCommand(SYNC_CMD_WRITE,fd,"REPLCONF",
                 "listening-port",port, NULL);
         sdsfree(port);
@@ -1638,6 +1654,9 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     server.repl_transfer_tmpfile = zstrdup(tmpfile);
     return;
 
+// 连接出错 读写超时  读写出错 
+// 删除该fd注册的事件回调函数,关闭该连接
+// 将复制状态重置为REPL_STATE_CONNECT,下次定时事件回调函数执行时会再次重新建立连接
 error:
     aeDeleteFileEvent(server.el,fd,AE_READABLE|AE_WRITABLE);
     if (dfd != -1) close(dfd);
